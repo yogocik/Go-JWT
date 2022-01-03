@@ -6,39 +6,71 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
+type UserCredential struct {
+	Username string `json:"user_name" binding:"required"`
+	Password string `json:"user_password" binding:"required"`
+}
+
+type authHeader struct {
+	AuthorizationHeader string `header:"authorization" binding:"required"`
+}
+
 func main() {
 	r := gin.Default()
-
-	type authHeader struct {
-		AuthorizationHeader string `header:"Authorization"`
-	}
-
-	r.GET("/customer", func(c *gin.Context) {
-		h := authHeader{}
-		if err := c.BindHeader(&h); err != nil || h.AuthorizationHeader == "" {
-			c.JSON(401, gin.H{
-				"Message":    "No Valid Header Provided.",
-				"StatusCode": 401,
-				"Data":       h,
+	r.Use(authMiddle())
+	r.POST("/login", func(c *gin.Context) {
+		user := UserCredential{}
+		if err := c.ShouldBindJSON(&user); err != nil {
+			c.JSON(400, gin.H{
+				"Message":    "Invalid input",
+				"StatusCode": 400,
 			})
 			return
 		}
-		if h.AuthorizationHeader == "123" {
+		if user.Username == "user" && user.Password == "pass" {
 			c.JSON(200, gin.H{
 				"Message":    "Success",
 				"StatusCode": 200,
-				"Data":       h,
 			})
 			return
 		}
-		c.JSON(401, gin.H{
-			"Message":    "Invalid Authorization",
+		c.AbortWithStatusJSON(401, gin.H{
+			"Message":    "Invalid credentials",
 			"StatusCode": 401,
-			"Data":       h,
+		})
+	})
+
+	r.GET("/customer", func(c *gin.Context) {
+		c.JSON(200, gin.H{
+			"Message":    "Success",
+			"StatusCode": 200,
+			"Data":       c.GetHeader("Authorization"),
 		})
 	})
 	err := r.Run()
 	if err != nil {
 		log.Fatalln("Failed running", err)
 	}
+}
+
+func authMiddle() gin.HandlerFunc {
+	authFunc := func(c *gin.Context) {
+		if c.Request.URL.Path == "/login" {
+			c.Next()
+			return
+		}
+		var h authHeader
+		if err := c.ShouldBindHeader(&h); err != nil || h.AuthorizationHeader == "" {
+			c.AbortWithStatusJSON(400, gin.H{
+				"Message":    "No valid header provided",
+				"StatusCode": 400,
+			})
+		} else if h.AuthorizationHeader != "123" {
+			c.AbortWithStatusJSON(401, gin.H{
+				"Message":    "Invalid header value",
+				"StatusCode": 401,
+			})
+		}
+	}
+	return authFunc
 }
